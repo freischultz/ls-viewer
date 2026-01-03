@@ -304,6 +304,19 @@
         const assetsMap = new Map();
         let repoBaseUrl = ''; // Global fallback/override if needed, but we try to use per-model base
 
+        // Skin Colors Configuration
+        const SKIN_COLORS = [
+            { name: 'Yellow', color: [242, 209, 140] },
+            { name: 'Milky', color: [251, 242, 200] },
+            { name: 'Light Brown', color: [200, 162, 91] },
+            { name: 'Dark Brown', color: [95, 63, 29] },
+            { name: 'Pale', color: [132, 162, 197] },
+            { name: 'Green', color: [94, 124, 64] },
+            { name: 'Gray', color: [51, 54, 48] },
+            { name: 'Gangsi', color: [84, 217, 255] },
+            { name: 'C', color: [78, 100, 106] }
+        ];
+
         class MshParser {
             constructor(arrayBuffer) {
                 this.data = new DataView(arrayBuffer);
@@ -669,7 +682,7 @@
         window.addEventListener('DOMContentLoaded', async () => {
             // Init Skin Selector
             const selector = document.getElementById('skin-select');
-            if (selector) { // Create if missing options
+            if (selector) {
                 SKIN_COLORS.forEach((s, index) => {
                     const opt = document.createElement('option');
                     opt.value = index;
@@ -683,19 +696,20 @@
             }
 
             const params = new URLSearchParams(window.location.search);
-            let modelPath = params.get('model');
+            const modelPath = params.get('model');
 
-            clearScene(); // Clear scene before loading any models
+            clearScene();
 
             if (!modelPath) {
-                // Default model if none specified
-                console.log("Auto-loading default models: basic_body_01_hw.msh and default_hand.msh");
+                console.log("Auto-loading default models...");
+                // Load sequentially to ensure order
                 try {
                     await loadModelFromUrl('mesh/basic_body_01_hw.msh');
-                } catch (e) { console.error("Err body", e); }
+                } catch (e) { console.warn("Failed to load default body", e); }
+
                 try {
                     await loadModelFromUrl('mesh/default_hand.msh');
-                } catch (e) { console.error("Err hand", e); }
+                } catch (e) { console.warn("Failed to load default hand", e); }
             } else {
                 console.log("Auto-loading model from URL parameter:", modelPath);
                 await loadModelFromUrl(modelPath);
@@ -711,13 +725,19 @@
                 if (child.isMesh) {
                     if (Array.isArray(child.material)) {
                         child.material.forEach(mat => {
-                            if (mat.map && mat.map.name && (mat.map.name.includes('skin') || mat.map.name.includes('face'))) {
-                                mat.color = color;
+                            if (mat.map && mat.map.name) {
+                                const n = mat.map.name.toLowerCase();
+                                if (n.includes('skin') || n.includes('face') || n.includes('body')) {
+                                    mat.color = color;
+                                }
                             }
                         });
                     } else {
-                        if (child.material.map && child.material.map.name && (child.material.map.name.includes('skin') || child.material.map.name.includes('face'))) {
-                            child.material.color = color;
+                        if (child.material.map && child.material.map.name) {
+                            const n = child.material.map.name.toLowerCase();
+                            if (n.includes('skin') || n.includes('face') || n.includes('body')) {
+                                child.material.color = color;
+                            }
                         }
                     }
                 }
@@ -954,22 +974,18 @@
             geometry.setIndex(data.indices);
 
             if (data.positions.length > 0 && isNaN(data.positions[0])) {
-                console.error("CRITICAL: Arrays contain NaN. Parsing failed/misaligned.");
-                alert("Parsing failed (NaN values). Check console.");
                 return;
             }
 
             // --- Submesh Logic ---
             const materials = [];
+            // Helper to find a skin texture if available in the loaded set
+            const skinTex = textures.find(t => t.name && (t.name.toLowerCase().includes('skin') || t.name.toLowerCase().includes('face'))) || textures[0];
             const defaultTex = textures.length > 0 ? textures[0] : null;
-
-            console.group(`Building Mesh: ${name}`);
-            console.log(`Submeshes Found: ${data.submeshes.length}`);
 
             if (data.submeshes.length > 0) {
                 data.submeshes.forEach((sub, i) => {
                     // Validate bounds
-                    console.log(`Submesh ${i}: StartIndex=${sub.indexStart}, FaceCount=${sub.faceCount}, Tris=${sub.faceCount / 3}`);
                     if (sub.indexStart + (sub.faceCount * 3) > data.indices.length) {
                         console.warn(`Submesh ${i} out of bounds! Clipping count.`);
                     }
@@ -981,8 +997,15 @@
                         // If we have loaded multiple textures (e.g. [face, skin]), try to map 1:1
                         let tex = textures[i];
 
-                        // Fallback: if no texture at index i, cycle or use last?
-                        if (!tex) tex = textures[textures.length - 1] || defaultTex;
+                        // Smart Fallback for Body/Face submeshes if explicit texture is missing
+                        if (!tex) {
+                            if (i === 1 && (name.includes('body') || name.includes('hand'))) {
+                                // Submesh 1 is usually skin for bodies
+                                tex = skinTex;
+                            } else {
+                                tex = defaultTex;
+                            }
+                        }
 
                         const mat = new THREE.MeshStandardMaterial({
                             map: tex,
@@ -994,9 +1017,12 @@
 
                         // Default Skin Color Application (on Load)
                         // If material uses a skin texture, apply default yellow
-                        if (tex && tex.name && tex.name.includes('skin')) {
-                            const defSkin = SKIN_COLORS[0]; // Yellow
-                            mat.color.setRGB(defSkin.color[0] / 255, defSkin.color[1] / 255, defSkin.color[2] / 255);
+                        if (tex && tex.name) {
+                            const n = tex.name.toLowerCase();
+                            if (n.includes('skin') || n.includes('face')) {
+                                const defSkin = SKIN_COLORS[0]; // Yellow
+                                mat.color.setRGB(defSkin.color[0] / 255, defSkin.color[1] / 255, defSkin.color[2] / 255);
+                            }
                         }
 
                         materials.push(mat);
@@ -1007,14 +1033,17 @@
                 console.warn("No submeshes detected, creating single group.");
                 geometry.addGroup(0, data.indices.length, 0);
                 // Same logic for single group
-                const mat = new THREE.MeshStandardMaterial({ map: defaultTex || null, side: THREE.DoubleSide, color: 0xffffff });
-                if (defaultTex && defaultTex.name && defaultTex.name.includes('skin')) {
+                let tex = defaultTex;
+                // If it's a hand/body mesh, prefer skin texture
+                if (name.includes('hand') || name.includes('body')) tex = skinTex;
+
+                const mat = new THREE.MeshStandardMaterial({ map: tex || null, side: THREE.DoubleSide, color: 0xffffff });
+                if (tex && tex.name && (tex.name.toLowerCase().includes('skin') || tex.name.toLowerCase().includes('face'))) {
                     const defSkin = SKIN_COLORS[0]; // Yellow
                     mat.color.setRGB(defSkin.color[0] / 255, defSkin.color[1] / 255, defSkin.color[2] / 255);
                 }
                 materials.push(mat);
             }
-            console.groupEnd();
 
             // Double check: if no groups, add default
             if (geometry.groups.length === 0) {
@@ -1035,8 +1064,8 @@
             group.add(mesh);
 
             // Debug Axis
-            const axis = new THREE.AxesHelper(50);
-            group.add(axis);
+            // const axis = new THREE.AxesHelper(50);
+            // group.add(axis);
 
             scene.add(group);
 
@@ -1052,17 +1081,16 @@
             if (maxDim > 0 && isFinite(maxDim)) {
                 const distance = maxDim * 2.0;
 
-                // Update Camera Far Plane
-                camera.far = Math.max(2000, distance * 5);
-                camera.updateProjectionMatrix();
-
                 // Don't override camera if user moved it?
                 // For now keep existing behavior: recenter on new load.
                 // Simple verify if we are near 0,0,0
-                if (camera.position.length() < 1 || (camera.position.x == 50 && camera.position.y == 50 && camera.position.z == 50)) {
+                if (camera.position.length() < 1 || (camera.position.x == 50 && camera.position.y == 50)) {
                     camera.position.set(center.x + distance, center.y + distance / 2, center.z + distance);
                     controls.target.copy(center);
                     controls.update();
+                    // Update Camera Far Plane
+                    camera.far = Math.max(2000, distance * 5);
+                    camera.updateProjectionMatrix();
                 }
             } else {
                 console.warn("Mesh size is invalid.");
