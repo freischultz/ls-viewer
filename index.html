@@ -538,17 +538,28 @@
             // Regex to find texture references
             // Supports: texture "foo.dds" | texture = "foo.dds" | texture="foo.dds"
             const textureMatches = [...text.matchAll(/texture\s*=?\s*["']?([^"';\s]+)["']?/gi)];
-            const textures = textureMatches.map(m => {
+            let textures = textureMatches.map(m => {
                 const fullPath = m[1];
                 return fullPath.split(/[\\/]/).pop();
             });
+
+            // Special handling for human body: usually needs a skin texture
+            // The material file often only references the "face" or "hair", but not the body skin
+            // We should try to load 'skin_01.dds' (default yellow skin) if we are loading a body
+            if (meshName.includes('human_body') && !textures.some(t => t.includes('skin'))) {
+                console.log("Adding default skin texture: skin_01.dds");
+                textures.push('skin_01.dds');
+            }
 
             console.log("Found texture references:", textures);
             return textures;
         }
 
         async function loadTexture(textureName) {
-            const cleanName = textureName.split(/[\\/]/).pop();
+            let cleanName = textureName.split(/[\\/]/).pop();
+
+            // Normalize common skin names if needed
+            if (cleanName.toLowerCase() === 'face01.dds') cleanName = 'skin_01.dds';
 
             // 1. Local File
             let file = assetsMap.get(cleanName);
@@ -570,15 +581,15 @@
                 // 2. Network Fetch
                 // Textures usually in "texture/" folder relative to root
                 if (repoBaseUrl) {
-                    url = `${repoBaseUrl}texture/${textureName}`;
+                    url = `${repoBaseUrl}texture/${cleanName}`;
                 } else {
-                    url = `texture/${textureName}`; // Try relative
+                    url = `texture/${cleanName}`; // Try relative
                 }
             }
 
             // Check extension
             try {
-                if (textureName.toLowerCase().endsWith('.dds')) {
+                if (cleanName.toLowerCase().endsWith('.dds')) {
                     const loader = new DDSLoader();
                     return await loader.loadAsync(url);
                 } else {
@@ -586,7 +597,7 @@
                     return await loader.loadAsync(url);
                 }
             } catch (e) {
-                console.warn(`Failed to load texture ${textureName} from ${url}`, e);
+                console.warn(`Failed to load texture ${cleanName} from ${url}`, e);
                 return null;
             }
         }
@@ -894,9 +905,17 @@
                     if (sub.faceCount > 0) {
                         geometry.addGroup(sub.indexStart, sub.faceCount * 3, i);
 
-                        const tex = textures[i % textures.length] || defaultTex;
+                        // Assign texture
+                        // If we have loaded multiple textures (e.g. [face, skin]), try to map 1:1
+                        let tex = textures[i];
+
+                        // Fallback: if no texture at index i, cycle or use last?
+                        if (!tex) tex = textures[textures.length - 1] || defaultTex;
 
                         if (tex) {
+                            // Debug name
+                            // console.log(`Assigning texture to submesh ${i}:`, tex.source.data ? tex.source.data.src : 'unknown');
+
                             materials.push(new THREE.MeshStandardMaterial({
                                 map: tex,
                                 color: 0xffffff,
