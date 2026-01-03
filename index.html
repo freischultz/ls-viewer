@@ -568,8 +568,6 @@
         async function loadTexture(textureName, baseUrl) {
             let cleanName = textureName.split(/[\\/]/).pop();
 
-            // Removed normalization of face01 -> skin_01 per request (keep raw names)
-
             // 1. Local File
             let file = assetsMap.get(cleanName);
             if (!file) {
@@ -582,36 +580,48 @@
                 }
             }
 
-            let url = '';
+            // Helper to fetch texture
+            async function tryFetch(name, url) {
+                try {
+                    const loader = name.toLowerCase().endsWith('.dds') ? new DDSLoader() : new THREE.TextureLoader();
+                    const t = await loader.loadAsync(url);
+                    t.name = name;
+                    return t;
+                } catch (e) {
+                    return null;
+                }
+            }
 
+            let url = '';
             if (file) {
                 url = URL.createObjectURL(file);
+                return await tryFetch(cleanName, url);
+            }
+
+            // 2. Network Fetch
+            if (baseUrl) {
+                url = `${baseUrl}texture/${cleanName}`;
             } else {
-                // 2. Network Fetch
-                // Textures usually in "texture/" folder relative to root
+                url = `texture/${cleanName}`;
+            }
+
+            let tex = await tryFetch(cleanName, url);
+
+            // Fallback: mixed up naming (face01 vs skin_01) is common
+            if (!tex && cleanName.toLowerCase() === 'face01.dds') {
+                console.warn("face01.dds not found, trying fallback skin_01.dds");
+                const altName = 'skin_01.dds';
                 if (baseUrl) {
-                    url = `${baseUrl}texture/${cleanName}`;
+                    url = `${baseUrl}texture/${altName}`;
                 } else {
-                    url = `texture/${cleanName}`; // Try relative
+                    url = `texture/${altName}`;
                 }
+                tex = await tryFetch(altName, url);
             }
 
-            let tex = null;
-            // Check extension
-            try {
-                if (cleanName.toLowerCase().endsWith('.dds')) {
-                    const loader = new DDSLoader();
-                    tex = await loader.loadAsync(url);
-                } else {
-                    const loader = new THREE.TextureLoader();
-                    tex = await loader.loadAsync(url);
-                }
-            } catch (e) {
-                console.warn("Failed to load texture:", cleanName);
-                return null;
+            if (!tex) {
+                console.warn(`Failed to load texture ${cleanName} from ${url}`);
             }
-
-            if (tex) tex.name = cleanName;
             return tex;
         }
 
