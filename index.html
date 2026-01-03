@@ -896,7 +896,11 @@
             const mesh = new THREE.Mesh(geometry, materials);
 
             // --- Transform (Matching Python Importer) ---
-            mesh.rotation.set(Math.PI / 2, 0, Math.PI);
+            // Adjusted: data appears to be Y-up. Removed X-rotation.
+            // Rotated Y 180 to face camera if needed.
+            mesh.rotation.set(0, Math.PI, 0);
+            mesh.scale.set(1, 1, 1); // Reset scale to default for now, -1 X usually for mirroring but let's see. Keep scale simple.
+            // Actually, keep scale -1 x if that was for coordinate system handedness
             mesh.scale.set(-1, 1, 1);
 
             const group = new THREE.Group();
