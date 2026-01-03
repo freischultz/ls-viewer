@@ -716,10 +716,6 @@
                 try {
                     await loadModelFromUrl('mesh/basic_body_01_hw.msh');
                 } catch (e) { console.warn("Failed to load default body", e); }
-
-                try {
-                    await loadModelFromUrl('mesh/default_hand.msh');
-                } catch (e) { console.warn("Failed to load default hand", e); }
             } else {
                 console.log("Auto-loading model from URL parameter:", modelPath);
                 await loadModelFromUrl(modelPath);
