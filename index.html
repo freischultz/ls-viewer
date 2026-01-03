@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lost Saga MSH Viewer</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-color: #121212;
+            --sidebar-width: 320px;
+            --sidebar-bg: #1e1e23;
+            --sidebar-border: #2a2a30;
+            --accent: #4a90e2;
+            --accent-hover: #357abd;
+            --text-main: #e0e0e0;
+            --text-muted: #888;
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            height: 100vh;
+        }
+
+        /* Sidebar Styling */
+        #sidebar {
+            width: var(--sidebar-width);
+            background-color: var(--sidebar-bg);
+            border-right: 1px solid var(--sidebar-border);
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            box-sizing: border-box;
+            z-index: 10;
+            box-shadow: 4px 0 20px rgba(0, 0, 0, 0.3);
+            overflow-y: auto;
+        }
+
+        #brand {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #fff;
+        }
+
+        #brand span {
+            color: var(--accent);
+        }
+
+        /* Main Viewport */
+        #container {
+            flex-grow: 1;
+            position: relative;
+            background: radial-gradient(circle at center, #2a2a2a 0%, #121212 100%);
+        }
+
+        /* File Input Area */
+        .drop-zone {
+            border: 2px dashed #3a3a40;
+            border-radius: 12px;
+            padding: 30px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-bottom: 25px;
+            background: rgba(255, 255, 255, 0.02);
+            position: relative;
+        }
+
+        .drop-zone:hover {
+            border-color: var(--accent);
+            background: rgba(74, 144, 226, 0.05);
+        }
+
+        .drop-zone-text {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-top: 10px;
+        }
+
+        .drop-zone-icon {
+            font-size: 24px;
+            color: var(--text-muted);
+        }
+
+        input[type="file"] {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        /* Panels */
+        .panel {
+            margin-bottom: 25px;
+            background: #25252b;
+            border-radius: 12px;
+            padding: 16px;
+            border: 1px solid #333;
+        }
+
+        .panel-header {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+
+        .stat-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .stat-label {
+            color: #aaa;
+        }
+
+        .stat-value {
+            font-weight: 500;
+            text-align: right;
+        }
+
+        /* Controls Help */
+        .controls-list {
+            font-size: 0.85rem;
+            color: #ccc;
+            line-height: 1.8;
+        }
+
+        .key {
+            background: #333;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            border: 1px solid #444;
+            margin-right: 6px;
+        }
+
+        /* Loading Overlay */
+        #loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(8px);
+            z-index: 100;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            color: white;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top: 4px solid var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 15px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Footer */
+        .footer {
+            margin-top: auto;
+            font-size: 0.75rem;
+            color: #555;
+            text-align: center;
+        }
+    </style>
+    <!-- Import Map for Three.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+
+<body>
+    <!-- Loading Overlay -->
+    <div id="loader">
+        <div class="spinner"></div>
+        <div style="font-weight: 500;">Processing Mesh...</div>
+    </div>
+
+    <!-- Sidebar -->
+    <div id="sidebar">
+        <div id="brand">
+            LOST SAGA <span>VIEWER</span>
+        </div>
+
+        <div class="drop-zone">
+            <div class="drop-zone-icon">📂</div>
+            <div class="drop-zone-text">Click or Drop .MSH File</div>
+            <input type="file" id="fileInput" accept=".msh">
+        </div>
+
+        <div class="panel" id="stats" style="display:none;">
+            <div class="panel-header">Model Info</div>
+            <div class="stat-row">
+                <span class="stat-label">File</span>
+                <span class="stat-value" id="stat-name"
+                    style="max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">-</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-label">Vertices</span>
+                <span class="stat-value" id="stat-verts">0</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-label">Triangles</span>
+                <span class="stat-value" id="stat-tris">0</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-label">Submeshes</span>
+                <span class="stat-value" id="stat-subs">0</span>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-header">Controls</div>
+            <div class="controls-list">
+                <div><span class="key">LMB</span> Rotate</div>
+                <div><span class="key">RMB</span> Pan</div>
+                <div><span class="key">Scroll</span> Zoom</div>
+            </div>
+        </div>
+
+        <div class="footer">
+            LS Viewer 1.0 (Web)
+        </div>
+    </div>
+
+    <!-- 3D Canvas -->
+    <div id="container"></div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { DDSLoader } from 'three/addons/loaders/DDSLoader.js';
+
+        // --- Constants matches core/classes/mesh.py ---
+        const IOFVF = {
+            POSITION: 1 << 0,
+            POSITION2: 1 << 1,
+            POSITIONW: 1 << 2,
+            WEIGHTS: 1 << 3,
+            INDICES: 1 << 4,
+            NORMAL: 1 << 5,
+            COLOR0: 1 << 6,
+            COLOR1: 1 << 7,
+            UV0: 1 << 8,
+            UV1: 1 << 9,
+            UV2: 1 << 10,
+            UV3: 1 << 11,
+            TANGENT: 1 << 12,
+            BINORMAL: 1 << 13,
+            END: 1 << 14
+        };
+
+        const MESH_VERSION_CONTROL_POINT = 2002;
+
+        // Global File Map & Base URL
+        const assetsMap = new Map();
+        let repoBaseUrl = ''; // Used if loading from URL
+
+        class MshParser {
+            constructor(arrayBuffer) {
+                this.data = new DataView(arrayBuffer);
+                this.offset = 0;
+                this.decoder = new TextDecoder('utf-8');
+            }
+
+            readUInt32() {
+                const val = this.data.getUint32(this.offset, true);
+                this.offset += 4;
+                return val;
+            }
+
+            readUint16() {
+                const val = this.data.getUint16(this.offset, true);
+                this.offset += 2;
+                return val;
+            }
+
+            readFloat() {
+                const val = this.data.getFloat32(this.offset, true);
+                this.offset += 4;
+                return val;
+            }
+
+            readVector3() {
+                return [this.readFloat(), this.readFloat(), this.readFloat()];
+            }
+
+            readVector2() {
+                return [this.readFloat(), this.readFloat()];
+            }
+
+            readString(length) {
+                if (length === 0) return '';
+                const bytes = new Uint8Array(this.data.buffer, this.data.byteOffset + this.offset, length);
+                this.offset += length;
+                return this.decoder.decode(bytes);
+            }
+
+            parse() {
+                // 1. Signature
+                const signature = this.readUInt32();
+                if (signature !== 4739917) {
+                    throw new Error(`Invalid signature: ${signature}. Expected 4739917`);
+                }
+
+                // 2. Version
+                const version = this.readUInt32();
+
+                // 3. Header Info
+                const meshType = this.readUInt32();
+                const vertexMask = this.readUInt32();
+
+                const bboxMin = this.readVector3();
+                const bboxMax = this.readVector3();
+                const radius = this.readFloat();
+
+                const submeshCount = this.readUInt32();
+                const submeshes = [];
+                for (let i = 0; i < submeshCount; i++) {
+                    submeshes.push({
+                        minIndex: this.readUInt32(),
+                        vertexCount: this.readUInt32(),
+                        indexStart: this.readUInt32(),
+                        faceCount: this.readUInt32()
+                    });
+                }
+
+                // 4. Vertices Logic (Structure of Arrays)
+                const totalVertices = this.readUInt32();
+
+                let positions = new Float32Array(0);
+                let normals = new Float32Array(0);
+                let uvs = new Float32Array(0);
+
+                // Position
+                if (vertexMask & IOFVF.POSITION) {
+                    positions = new Float32Array(totalVertices * 3);
+                    for (let i = 0; i < totalVertices; i++) {
+                        const [x, y, z] = this.readVector3();
+                        positions[i * 3] = x;
+                        positions[i * 3 + 1] = y;
+                        positions[i * 3 + 2] = z;
+                    }
+                }
+
+                // Normal
+                if (vertexMask & IOFVF.NORMAL) {
+                    normals = new Float32Array(totalVertices * 3);
+                    for (let i = 0; i < totalVertices; i++) {
+                        const [x, y, z] = this.readVector3();
+                        normals[i * 3] = x;
+                        normals[i * 3 + 1] = y;
+                        normals[i * 3 + 2] = z;
+                    }
+                }
+
+                // Tangent
+                if (vertexMask & IOFVF.TANGENT) this.offset += totalVertices * 3 * 4;
+                // Binormal
+                if (vertexMask & IOFVF.BINORMAL) this.offset += totalVertices * 3 * 4;
+                // Color0
+                if (vertexMask & IOFVF.COLOR0) this.offset += totalVertices * 4;
+
+                // UV0
+                if (vertexMask & IOFVF.UV0) {
+                    uvs = new Float32Array(totalVertices * 2);
+                    for (let i = 0; i < totalVertices; i++) {
+                        const [u, v] = this.readVector2();
+                        uvs[i * 2] = u;
+                        uvs[i * 2 + 1] = v; // Invert V usually required for WebGL vs DirectX? Blender does 1.0 - v
+                    }
+                }
+
+                // UV1
+                if (vertexMask & IOFVF.UV1) this.offset += totalVertices * 2 * 4;
+
+                // 5. Weights
+                if (vertexMask & IOFVF.WEIGHTS) {
+                    const bipedIndexCount = this.readUInt32();
+                    for (let i = 0; i < bipedIndexCount; i++) {
+                        const len = this.readUInt32();
+                        if (len > 0) {
+                            this.readString(len); // skip name
+                        }
+                    }
+                    // Skip per-vertex weights (4 floats weight + 4 floats index) = 8 floats = 32 bytes
+                    this.offset += totalVertices * 8 * 4;
+                }
+
+                // 6. Billboard Center
+                if (vertexMask & IOFVF.POSITION2) this.offset += totalVertices * 3 * 4;
+
+                // 7. Faces
+                const totalFaceCount = this.readUInt32();
+                const indices = [];
+                // indices are unsigned short (H)
+                for (let i = 0; i < totalFaceCount * 3; i++) {
+                    indices.push(this.readUint16());
+                }
+
+                return {
+                    positions: positions,
+                    normals: normals,
+                    uvs: uvs,
+                    indices: indices,
+                    submeshes: submeshes,
+                    vertexMask: vertexMask
+                };
+            }
+        }
+
+        // --- Simplified Material Parser ---
+        async function loadMaterial(meshName) {
+            // 1. Try Local File (Drag & Drop)
+            const matFileName = `${meshName}.txt`;
+            let file = assetsMap.get(matFileName);
+
+            // Fuzzy match local
+            if (!file) {
+                const searchName = matFileName.toLowerCase();
+                for (const [key, val] of assetsMap.entries()) {
+                    if (key.toLowerCase() === searchName) {
+                        file = val;
+                        break;
+                    }
+                }
+            }
+
+            let text = '';
+
+            if (file) {
+                text = await file.text();
+            } else {
+                // 2. Try Network Fetch (if we are in "Hosted Mode")
+                // We assume a standard folder structure: root/material/meshName.txt
+                // or just absolute/relative path if provided.
+
+                try {
+                    // Try to construct path. If we loaded a model from "assets/mesh/foo.msh",
+                    // we expect material at "assets/material/foo.txt" usually.
+                    // Or if flat structure, just neighbors.
+
+                    let url = '';
+                    if (repoBaseUrl) {
+                        // Assumption: repoBaseUrl points to the root asset folder (e.g. "assets/")
+                        url = `${repoBaseUrl}material/${meshName}.txt`;
+                    } else {
+                        // Fallback: try relative to current page location?
+                        // Unlikely to work unless explicitly set up, but let's try standard path
+                        url = `material/${meshName}.txt`;
+                    }
+
+                    console.log(`Fetching material from: ${url}`);
+                    const response = await fetch(url);
+                    if (response.ok) {
+                        text = await response.text();
+                    } else {
+                        console.warn(`Server 404 for material: ${url}`);
+                        return [];
+                    }
+                } catch (e) {
+                    console.warn(`Could not fetch material for ${meshName}`, e);
+                    return [];
+                }
+            }
+
+            // Parse Text
+            const textureMatches = [...text.matchAll(/texture\s+["']?([^"';\s]+)["']?/g)];
+            const textures = textureMatches.map(m => {
+                const fullPath = m[1];
+                return fullPath.split(/[\\/]/).pop();
+            });
+
+            console.log("Found texture references:", textures);
+            return textures;
+        }
+
+        async function loadTexture(textureName) {
+            const cleanName = textureName.split(/[\\/]/).pop();
+
+            // 1. Local File
+            let file = assetsMap.get(cleanName);
+            if (!file) {
+                const search = cleanName.toLowerCase();
+                for (const [key, val] of assetsMap.entries()) {
+                    if (key.toLowerCase() === search) {
+                        file = val;
+                        break;
+                    }
+                }
+            }
+
+            let url = '';
+
+            if (file) {
+                url = URL.createObjectURL(file);
+            } else {
+                // 2. Network Fetch
+                // Textures usually in "texture/" folder relative to root
+                if (repoBaseUrl) {
+                    url = `${repoBaseUrl}texture/${textureName}`;
+                } else {
+                    url = `texture/${textureName}`; // Try relative
+                }
+            }
+
+            // Check extension
+            try {
+                if (textureName.toLowerCase().endsWith('.dds')) {
+                    const loader = new DDSLoader();
+                    return await loader.loadAsync(url);
+                } else {
+                    const loader = new THREE.TextureLoader();
+                    return await loader.loadAsync(url);
+                }
+            } catch (e) {
+                console.warn(`Failed to load texture ${textureName} from ${url}`, e);
+                return null;
+            }
+        }
+
+        // --- Main Viewer Logic ---
+
+        const container = document.getElementById('container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x222222);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100000);
+        camera.position.set(50, 50, 50);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        // renderer.outputColorSpace = THREE.SRGBColorSpace; // Modern Three.js
+        container.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // Lights
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        dirLight.position.set(100, 200, 100);
+        scene.add(dirLight);
+
+        // Grid
+        const gridHelper = new THREE.GridHelper(500, 50);
+        scene.add(gridHelper);
+
+        // Axes
+        const axesHelper = new THREE.AxesHelper(20);
+        scene.add(axesHelper);
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // --- File Handling & URL Loading ---
+
+        // Check for URL Parameter ?model=path/to/model.msh
+        window.addEventListener('DOMContentLoaded', () => {
+            const params = new URLSearchParams(window.location.search);
+            const modelPath = params.get('model');
+            if (modelPath) {
+                console.log("Auto-loading model from URL:", modelPath);
+                loadModelFromUrl(modelPath);
+            }
+        });
+
+        async function loadModelFromUrl(url) {
+            document.getElementById('loader').style.display = 'flex';
+
+            // Determine Base URL (root asset folder)
+            // Assumes url is like "assets/mesh/foo.msh" -> Base is "assets/"
+            // Or if full url "https://site.com/data/mesh/foo.msh" -> "https://site.com/data/"
+
+            // Find last occurrence of 'mesh/' or just use directory
+            let base = '';
+            if (url.includes('mesh/')) {
+                base = url.substring(0, url.indexOf('mesh/'));
+            } else {
+                const lastSlash = url.lastIndexOf('/');
+                if (lastSlash !== -1) base = url.substring(0, lastSlash + 1);
+            }
+            repoBaseUrl = base;
+            console.log("Determined Base Repo URL:", repoBaseUrl);
+
+            const name = url.split('/').pop().replace(/\.msh$/i, '');
+
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP ${response.status} - ${response.statusText}`);
+
+                const buffer = await response.arrayBuffer();
+                const parser = new MshParser(buffer);
+                const meshData = parser.parse();
+
+                // Load Material (Network)
+                const textureNames = await loadMaterial(name);
+                const loadedTextures = [];
+
+                if (textureNames && textureNames.length > 0) {
+                    for (const tName of textureNames) {
+                        const tex = await loadTexture(tName);
+                        if (tex) {
+                            tex.wrapS = THREE.RepeatWrapping;
+                            tex.wrapT = THREE.RepeatWrapping;
+                            loadedTextures.push(tex);
+                        }
+                    }
+                }
+
+                buildSceneMesh(meshData, name, loadedTextures);
+
+            } catch (e) {
+                console.error(e);
+                alert("Failed to load model from URL: " + e.message);
+            } finally {
+                document.getElementById('loader').style.display = 'none';
+            }
+        }
+
+        const fileInput = document.getElementById('fileInput');
+
+        // Remove directory attributes, enable multiple
+        fileInput.removeAttribute('webkitdirectory');
+        fileInput.removeAttribute('directory');
+        fileInput.setAttribute('multiple', '');
+        fileInput.setAttribute('accept', '.msh,.txt,.dds,.png,.jpg,.tga');
+
+        fileInput.closest('.drop-zone').querySelector('.drop-zone-text').innerText = "Drop Files or use ?model=URL";
+
+        // Asset List UI
+        const sidebar = document.getElementById('sidebar');
+        let assetListDiv = document.getElementById('asset-list');
+        if (!assetListDiv) {
+            assetListDiv = document.createElement('div');
+            assetListDiv.id = 'asset-list';
+            assetListDiv.className = 'panel';
+            assetListDiv.innerHTML = '<div class="panel-header">Found Meshes</div><div id="mesh-list-content" style="max-height: 300px; overflow-y: auto; font-size: 0.85rem;"></div>';
+            sidebar.insertBefore(assetListDiv, document.getElementById('stats'));
+        }
+
+        fileInput.addEventListener('change', async (event) => {
+            handleFiles(event.target.files);
+        });
+
+        // Handle drag and drop on the drop zone specifically
+        const dropZone = fileInput.closest('.drop-zone');
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = 'var(--accent)';
+        });
+        dropZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = '#3a3a40';
+        });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = '#3a3a40';
+            handleFiles(e.dataTransfer.files);
+        });
+
+        async function handleFiles(files) {
+            document.getElementById('loader').style.display = 'flex';
+
+            // Allow a small timeout for UI to update
+            setTimeout(async () => {
+                assetsMap.clear();
+                repoBaseUrl = ''; // Clear network mode
+
+                const meshListContent = document.getElementById('mesh-list-content');
+                meshListContent.innerHTML = '';
+
+                let mshFiles = [];
+
+                for (let i = 0; i < files.length; i++) {
+                    const f = files[i];
+                    // Map by basename
+                    assetsMap.set(f.name, f);
+
+                    if (f.name.toLowerCase().endsWith('.msh')) {
+                        mshFiles.push(f);
+                    }
+                }
+
+                // Populate List
+                mshFiles.forEach(f => {
+                    const item = document.createElement('div');
+                    item.innerText = f.name;
+                    item.style.cursor = 'pointer';
+                    item.style.padding = '4px 8px';
+                    item.style.borderBottom = '1px solid #333';
+                    item.style.fontSize = '0.9rem';
+                    item.addEventListener('click', () => loadMeshFromFile(f));
+                    item.onmouseover = () => { item.style.backgroundColor = 'rgba(255,255,255,0.05)'; item.style.color = '#fff'; };
+                    item.onmouseout = () => { item.style.backgroundColor = 'transparent'; item.style.color = '#ccc'; };
+                    meshListContent.appendChild(item);
+                });
+
+                document.getElementById('loader').style.display = 'none';
+
+                if (mshFiles.length === 1) {
+                    // Auto load if only one mesh
+                    loadMeshFromFile(mshFiles[0]);
+                } else if (mshFiles.length === 0) {
+                    alert("No .msh files found in selection. Ensure you dropped the model file.");
+                }
+
+            }, 50);
+        }
+
+        async function loadMeshFromFile(file) {
+            document.getElementById('loader').style.display = 'flex';
+            const name = file.name.replace(/\.msh$/i, ''); // Case insensitive replace
+
+            try {
+                const buffer = await file.arrayBuffer();
+                const parser = new MshParser(buffer);
+                const meshData = parser.parse();
+
+                // Get textures
+                const textureNames = await loadMaterial(name);
+                const loadedTextures = [];
+
+                // Load Default White Texture in case fail
+                // ...
+
+                if (textureNames && textureNames.length > 0) {
+                    for (const tName of textureNames) {
+                        try {
+                            const tex = await loadTexture(tName);
+                            if (tex) {
+                                tex.wrapS = THREE.RepeatWrapping;
+                                tex.wrapT = THREE.RepeatWrapping;
+                                loadedTextures.push(tex);
+                            }
+                        } catch (e) {
+                            console.warn("Failed to load texture", tName);
+                        }
+                    }
+                }
+
+                buildSceneMesh(meshData, name, loadedTextures);
+            } catch (e) {
+                console.error(e);
+                alert("Error loading mesh: " + e.message);
+            } finally {
+                document.getElementById('loader').style.display = 'none';
+            }
+        }
+
+        function buildSceneMesh(data, name, textures) {
+            // Clear previous
+            for (let i = scene.children.length - 1; i >= 0; i--) {
+                const child = scene.children[i];
+                if (child.type === 'Group' && child.name.endsWith('_model')) {
+                    scene.remove(child);
+                }
+            }
+
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(data.positions, 3));
+
+            if (data.normals && data.normals.length > 0) {
+                geometry.setAttribute('normal', new THREE.BufferAttribute(data.normals, 3));
+            }
+
+            if (data.uvs && data.uvs.length > 0) {
+                // Invert V
+                for (let i = 1; i < data.uvs.length; i += 2) {
+                    data.uvs[i] = 1.0 - data.uvs[i];
+                }
+                geometry.setAttribute('uv', new THREE.BufferAttribute(data.uvs, 2));
+            }
+
+            geometry.setIndex(data.indices);
+
+            if (data.positions.length > 0 && isNaN(data.positions[0])) {
+                console.error("CRITICAL: Arrays contain NaN. Parsing failed/misaligned.");
+                alert("Parsing failed (NaN values). Check console.");
+                return;
+            }
+
+            // --- Submesh Logic ---
+            const materials = [];
+            const defaultTex = textures.length > 0 ? textures[0] : null;
+
+            if (data.submeshes.length > 0) {
+                data.submeshes.forEach((sub, i) => {
+                    // Validate bounds
+                    if (sub.indexStart + (sub.faceCount * 3) > data.indices.length) {
+                        console.warn(`Submesh ${i} out of bounds! Clipping count.`);
+                    }
+
+                    if (sub.faceCount > 0) {
+                        geometry.addGroup(sub.indexStart, sub.faceCount * 3, i);
+
+                        const tex = textures[i % textures.length] || defaultTex;
+
+                        if (tex) {
+                            materials.push(new THREE.MeshStandardMaterial({
+                                map: tex,
+                                color: 0xffffff,
+                                side: THREE.DoubleSide,
+                                alphaTest: 0.5,
+                                transparent: true // Enable transparency
+                            }));
+                        } else {
+                            // Fallback debug color
+                            const color = new THREE.Color().setHSL(i / data.submeshes.length, 0.7, 0.5);
+                            materials.push(new THREE.MeshStandardMaterial({ color: color, side: THREE.DoubleSide }));
+                        }
+                    }
+                });
+            } else {
+                // Fallback
+                geometry.addGroup(0, data.indices.length, 0);
+                if (defaultTex) {
+                    materials.push(new THREE.MeshStandardMaterial({ map: defaultTex, side: THREE.DoubleSide, alphaTest: 0.5 }));
+                } else {
+                    materials.push(new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+                }
+            }
+
+            // Double check: if no groups, add default
+            if (geometry.groups.length === 0) {
+                geometry.addGroup(0, data.indices.length, 0);
+                if (materials.length === 0) materials.push(new THREE.MeshBasicMaterial({ color: 0xff00ff }));
+            }
+
+            const mesh = new THREE.Mesh(geometry, materials);
+
+            // --- Transform (Matching Python Importer) ---
+            mesh.rotation.set(Math.PI / 2, 0, Math.PI);
+            mesh.scale.set(-1, 1, 1);
+
+            const group = new THREE.Group();
+            group.name = name + '_model';
+            group.add(mesh);
+
+            // Debug Axis
+            const axis = new THREE.AxesHelper(50);
+            group.add(axis);
+
+            scene.add(group);
+
+            // --- Camera Fit ---
+            const box = new THREE.Box3().setFromObject(group);
+            const size = new THREE.Vector3();
+            box.getSize(size);
+            const center = new THREE.Vector3();
+            box.getCenter(center);
+
+            const maxDim = Math.max(size.x, size.y, size.z);
+
+            if (maxDim > 0 && isFinite(maxDim)) {
+                const distance = maxDim * 2.0;
+
+                // Update Camera Far Plane
+                camera.far = Math.max(2000, distance * 5);
+                camera.updateProjectionMatrix();
+
+                camera.position.set(center.x + distance, center.y + distance / 2, center.z + distance);
+                controls.target.copy(center);
+                controls.update();
+            } else {
+                console.warn("Mesh size is invalid.");
+            }
+
+            // Update Stats
+            document.getElementById('stats').style.display = 'block';
+            document.getElementById('stat-verts').innerText = (data.positions.length / 3).toLocaleString();
+            document.getElementById('stat-tris').innerText = (data.indices.length / 3).toLocaleString();
+            document.getElementById('stat-subs').innerText = data.submeshes.length;
+            document.getElementById('stat-name').innerText = name;
+        }
+    </script>
+</body>
+
+</html>
+```
