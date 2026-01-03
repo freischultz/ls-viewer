@@ -1,0 +1,38 @@
+material
+{
+	specularlv 1.7
+	specular_power 5.0
+	technique
+	{
+		pass
+		{
+			scene_blend rev_subtract src_alpha one
+			shader_group Animate
+			texture_unit
+			{
+				texture avatar_ad_eff.dds
+				scroll_anim 0.000 -0.500
+			}
+		}
+		pass
+		{
+			scene_blend add src_alpha one
+			shader_group Animate
+			texture_unit
+			{
+				texture eff_demonthief_hand02.dds
+				scroll_anim 0.000 -0.250
+			}
+		}
+		pass
+		{
+			scene_blend add one one
+			depth_write false
+			shader_group AnimateSpecular
+			texture_unit
+			{
+				texture eff_sphere_lm.dds
+			}
+		}
+	}
+}

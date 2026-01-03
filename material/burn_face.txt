@@ -1,0 +1,23 @@
+material
+{
+	emissive 1.0 1.0 1.0
+	technique
+	{
+		pass
+		{
+			shader_group Animate
+		}
+	}
+}
+material
+{
+	ambient 0.0 0.0 0.0
+	diffuse 0.0 0.0 0.0
+	technique
+	{
+		pass
+		{
+			shader_group Animate
+		}
+	}
+}

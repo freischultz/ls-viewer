@@ -1,0 +1,20 @@
+material
+{
+	ambient 1.0 0.7 0.5
+	diffuse 0.5 0.3 0.0
+	technique
+	{
+		pass
+		{
+			scene_blend add src_alpha inv_src_alpha
+			cull none
+			lighting false
+			shader_group Animate
+			texture_unit
+			{
+				texture changchun_dummy_hair.dds
+				filtering none
+			}
+		}
+	}
+}

@@ -44,6 +44,7 @@
             z-index: 10;
             box-shadow: 4px 0 20px rgba(0, 0, 0, 0.3);
             overflow-y: auto;
+            flex-shrink: 0;
         }
 
         #brand {
@@ -572,11 +573,15 @@
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x222222);
 
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100000);
+        // Use container dimensions, not window
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+
+        const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 100000);
         camera.position.set(50, 50, 50);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setSize(width, height);
         // renderer.outputColorSpace = THREE.SRGBColorSpace; // Modern Three.js
         container.appendChild(renderer.domElement);
 
@@ -600,9 +605,11 @@
         scene.add(axesHelper);
 
         window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            camera.aspect = width / height;
             camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setSize(width, height);
         });
 
         function animate() {

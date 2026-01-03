@@ -1,0 +1,109 @@
+material
+{
+	technique
+	{
+		pass
+		{
+			cull none
+			shader_group AnimateToonShade
+			shadow_cast true
+			light_iterate true
+			texture_unit
+			{
+				use_light_texture true
+				tex_address_mode clamp
+				alpha_blend selectarg2 texture diffuse
+			}
+			texture_unit
+			{
+				texture human_body_11.dds
+				tex_coord_set 1
+				filtering none
+				color_blend add current tfactor
+				alpha_blend modulate current texture
+			}
+		}
+		pass
+		{
+			scene_blend add zero src_color
+			depth_write false
+			cull none
+			lighting false
+			shader_group Animate
+			texture_unit
+			{
+				texture human_body_11.dds
+				filtering none
+			}
+		}
+		pass
+		{
+			cull clockwise
+			shader_group AnimateOutLine
+			custom_param OutLineColor colorvalue 0.345 0.208 0.086 1.000
+			custom_param OutLineThickness float 1.450
+			texture_unit
+			{
+				color_blend selectarg2 texture diffuse
+				alpha_blend selectarg2 texture diffuse
+			}
+		}
+	}
+}
+material
+{
+	ambient 1.0 0.8 0.8
+	technique
+	{
+		pass
+		{
+			shader_group AnimateToonShade
+			shadow_cast true
+			light_iterate true
+			texture_unit
+			{
+				use_light_texture true
+				tex_address_mode clamp
+				alpha_blend selectarg2 texture diffuse
+			}
+			texture_unit
+			{
+				texture human_body.dds
+				tex_coord_set 1
+				color_blend add current tfactor
+				alpha_blend modulate current texture
+			}
+		}
+		pass
+		{
+			scene_blend add zero src_color
+			depth_write false
+			lighting false
+			shader_group Animate
+			texture_unit
+			{
+				texture human_body.dds
+				color_blend blend_texture_alpha texture tfactor
+				alpha_blend selectarg1 diffuse diffuse
+			}
+			texture_unit
+			{
+				tex_coord_set 1
+				color_blend modulate current diffuse
+				alpha_blend selectarg1 diffuse current
+			}
+		}
+		pass
+		{
+			cull clockwise
+			shader_group AnimateOutLine
+			custom_param OutLineColor colorvalue 0.518 0.318 0.149 1.000
+			custom_param OutLineThickness float 1.000
+			texture_unit
+			{
+				color_blend selectarg2 texture diffuse
+				alpha_blend selectarg2 texture diffuse
+			}
+		}
+	}
+}

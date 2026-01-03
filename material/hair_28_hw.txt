@@ -1,0 +1,52 @@
+material
+{
+	technique
+	{
+		pass
+		{
+			cull none
+			shader_group AnimateToonShade
+			shadow_cast true
+			light_iterate true
+			texture_unit
+			{
+				use_light_texture true
+				tex_address_mode clamp
+				alpha_blend selectarg2 texture diffuse
+			}
+			texture_unit
+			{
+				texture hair_28_1_hw.dds
+				tex_coord_set 1
+				filtering none
+				color_blend add current tfactor
+				alpha_blend modulate current texture
+			}
+		}
+		pass
+		{
+			scene_blend add zero src_color
+			depth_write false
+			cull none
+			lighting false
+			shader_group Animate
+			texture_unit
+			{
+				texture hair_28_1_hw.dds
+				filtering none
+			}
+		}
+		pass
+		{
+			cull clockwise
+			shader_group AnimateOutLine
+			custom_param OutLineColor colorvalue 0.000 0.000 0.000 1.000
+			custom_param OutLineThickness float 1.000
+			texture_unit
+			{
+				color_blend selectarg2 texture diffuse
+				alpha_blend selectarg2 texture diffuse
+			}
+		}
+	}
+}

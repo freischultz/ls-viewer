@@ -1,0 +1,29 @@
+material
+{
+	emissive 1.0 1.0 1.0
+	technique
+	{
+		pass
+		{
+			scene_blend add src_alpha one
+			depth_write false
+			shader_group Static
+			texture_unit
+			{
+				texture flyingship_glow.dds
+				filtering none
+			}
+		}
+		pass
+		{
+			scene_blend add src_alpha inv_src_alpha
+			depth_write false
+			shader_group Static
+			texture_unit
+			{
+				texture face_17_hw.dds
+				filtering none
+			}
+		}
+	}
+}

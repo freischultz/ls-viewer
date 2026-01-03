@@ -1,0 +1,21 @@
+material
+{
+	emissive 1.0 1.0 1.0
+	technique
+	{
+		pass
+		{
+			scene_blend add src_alpha inv_src_alpha
+			depth_write false
+			cull none
+			shader_group Static
+			texture_unit
+			{
+				texture hakumen_eff_hair.dds
+				tex_address_mode clamp
+				filtering none
+				scroll_anim 0.000 -1.000
+			}
+		}
+	}
+}

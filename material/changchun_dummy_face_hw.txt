@@ -1,0 +1,18 @@
+material
+{
+	ambient 1.0 0.7 0.5
+	diffuse 0.5 0.3 0.0
+	technique
+	{
+		pass
+		{
+			scene_blend add inv_dest_color one
+			shader_group Animate
+			texture_unit
+			{
+				texture face_1_hw.dds
+				filtering none
+			}
+		}
+	}
+}

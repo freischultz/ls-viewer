@@ -1,0 +1,17 @@
+material
+{
+	specularlv 1.7
+	specular_power 5.0
+	technique
+	{
+		pass
+		{
+			shader_group Animate
+			texture_unit
+			{
+				texture 00.dds
+				scroll_anim 0.000 -0.500
+			}
+		}
+	}
+}
