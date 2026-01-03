@@ -459,19 +459,35 @@
 
         // --- Simplified Material Parser ---
         async function loadMaterial(meshName) {
-            // 1. Try Local File (Drag & Drop)
-            const matFileName = `${meshName}.txt`;
-            let file = assetsMap.get(matFileName);
+            // Helper to try finding a file key in assetsMap case-insensitively
+            function findFile(name) {
+                const searchName = name.toLowerCase();
+                // Direct check first
+                if (assetsMap.has(name)) return assetsMap.get(name);
 
-            // Fuzzy match local
-            if (!file) {
-                const searchName = matFileName.toLowerCase();
                 for (const [key, val] of assetsMap.entries()) {
-                    if (key.toLowerCase() === searchName) {
-                        file = val;
-                        break;
+                    // Check strict basename match "foo.txt" or path end "material/foo.txt"
+                    if (key.toLowerCase() === searchName ||
+                        key.toLowerCase().endsWith(`/${searchName}`) ||
+                        key.toLowerCase().endsWith(`\\${searchName}`)) {
+                        return val;
                     }
                 }
+                return null;
+            }
+
+            // 1. Try Local File (Drag & Drop)
+            let matFileName = `${meshName}.txt`;
+            let file = findFile(matFileName);
+
+            // FALLBACK: If _hw (female variant), try base name
+            if (!file && meshName.toLowerCase().endsWith('_hw')) {
+                const baseName = meshName.slice(0, -3); // remove _hw
+                console.log(`Material for ${meshName} not found, trying fallback: ${baseName}.txt`);
+                file = findFile(`${baseName}.txt`);
+                // If we found it, update meshName for fetch logic below so we don't try the wrong URL
+                if (file) matFileName = `${baseName}.txt`;
+                else matFileName = `${baseName}.txt`; // Set for fetch attempt
             }
 
             let text = '';
@@ -480,26 +496,32 @@
                 text = await file.text();
             } else {
                 // 2. Try Network Fetch (if we are in "Hosted Mode")
-                // We assume a standard folder structure: root/material/meshName.txt
-                // or just absolute/relative path if provided.
-
                 try {
-                    // Try to construct path. If we loaded a model from "assets/mesh/foo.msh",
-                    // we expect material at "assets/material/foo.txt" usually.
-                    // Or if flat structure, just neighbors.
-
                     let url = '';
+                    // First attempt: Try the exact mesh name (or the fallback name we decided on above)
+                    // If we fell back locally but failed, matFileName is already baseName.txt
+
                     if (repoBaseUrl) {
-                        // Assumption: repoBaseUrl points to the root asset folder (e.g. "assets/")
-                        url = `${repoBaseUrl}material/${meshName}.txt`;
+                        url = `${repoBaseUrl}material/${matFileName}`;
                     } else {
-                        // Fallback: try relative to current page location?
-                        // Unlikely to work unless explicitly set up, but let's try standard path
-                        url = `material/${meshName}.txt`;
+                        url = `material/${matFileName}`;
                     }
 
                     console.log(`Fetching material from: ${url}`);
-                    const response = await fetch(url);
+                    let response = await fetch(url);
+
+                    // If 404 and we haven't tried fallback yet (meaning we are running purely on URL mode)
+                    if (!response.ok && meshName.toLowerCase().endsWith('_hw') && !matFileName.endsWith(meshName.slice(0, -3) + '.txt')) {
+                        const baseName = meshName.slice(0, -3);
+                        console.log(`Material ${matFileName} 404, trying fallback URL for: ${baseName}.txt`);
+                        if (repoBaseUrl) {
+                            url = `${repoBaseUrl}material/${baseName}.txt`;
+                        } else {
+                            url = `material/${baseName}.txt`;
+                        }
+                        response = await fetch(url);
+                    }
+
                     if (response.ok) {
                         text = await response.text();
                     } else {
@@ -513,7 +535,9 @@
             }
 
             // Parse Text
-            const textureMatches = [...text.matchAll(/texture\s+["']?([^"';\s]+)["']?/g)];
+            // Regex to find texture references
+            // Supports: texture "foo.dds" | texture = "foo.dds" | texture="foo.dds"
+            const textureMatches = [...text.matchAll(/texture\s*=?\s*["']?([^"';\s]+)["']?/gi)];
             const textures = textureMatches.map(m => {
                 const fullPath = m[1];
                 return fullPath.split(/[\\/]/).pop();
@@ -856,9 +880,13 @@
             const materials = [];
             const defaultTex = textures.length > 0 ? textures[0] : null;
 
+            console.group(`Building Mesh: ${name}`);
+            console.log(`Submeshes Found: ${data.submeshes.length}`);
+
             if (data.submeshes.length > 0) {
                 data.submeshes.forEach((sub, i) => {
                     // Validate bounds
+                    console.log(`Submesh ${i}: StartIndex=${sub.indexStart}, FaceCount=${sub.faceCount}, Tris=${sub.faceCount / 3}`);
                     if (sub.indexStart + (sub.faceCount * 3) > data.indices.length) {
                         console.warn(`Submesh ${i} out of bounds! Clipping count.`);
                     }
@@ -885,6 +913,7 @@
                 });
             } else {
                 // Fallback
+                console.warn("No submeshes detected, creating single group.");
                 geometry.addGroup(0, data.indices.length, 0);
                 if (defaultTex) {
                     materials.push(new THREE.MeshStandardMaterial({ map: defaultTex, side: THREE.DoubleSide, alphaTest: 0.5 }));
@@ -892,6 +921,7 @@
                     materials.push(new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
                 }
             }
+            console.groupEnd();
 
             // Double check: if no groups, add default
             if (geometry.groups.length === 0) {
@@ -905,8 +935,6 @@
             // Adjusted: data appears to be Y-up. Removed X-rotation.
             // Rotated Y 180 to face camera if needed.
             mesh.rotation.set(0, Math.PI, 0);
-            mesh.scale.set(1, 1, 1); // Reset scale to default for now, -1 X usually for mirroring but let's see. Keep scale simple.
-            // Actually, keep scale -1 x if that was for coordinate system handedness
             mesh.scale.set(-1, 1, 1);
 
             const group = new THREE.Group();
@@ -953,4 +981,3 @@
 </body>
 
 </html>
-```
