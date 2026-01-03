@@ -594,13 +594,11 @@
 
                         // Parse ONE texture from this block
                         // We take the first "texture name.dds" occurrence as the Diffuse map
-                        const m = blockContent.match(/texture\s*=?\s*["']?([^"';\s]+)["']?/i);
+                        // regex: texture followed by whitespace, optional =, optional quote, capture, optional quote
+                        const m = blockContent.match(/texture\s*=?\s*["']?([^"';\s{}]+)["']?/i);
                         if (m) {
                             textures.push(m[1].split(/[\\/]/).pop());
                         } else {
-                            // Push null placeholder if material has no texture, to keep index alignment?
-                            // Or just skip? Usually bad to skip if mapping by index.
-                            // Let's push null to maintain 1-to-1 material-to-submesh mapping hope.
                             textures.push(null);
                         }
                     } else {
@@ -611,17 +609,18 @@
                 }
             }
 
-            // Fallback: If strict parsing failed (e.g. weird formatting), fallback to simple regex
-            if (textures.length === 0) {
-                const fallbackMatches = [...text.matchAll(/texture\s*=?\s*["']?([^"';\s]+)["']?/gi)];
+            // Fallback: If strict parsing failed to find ANY textures (all null or empty), fallback to simple regex
+            const validTextures = textures.filter(t => t !== null);
+            if (validTextures.length === 0) {
+                console.warn("Strict parsing failed or found no textures. Falling back to global search.");
+                textures.length = 0; // Clear
+                const fallbackMatches = [...text.matchAll(/texture\s*=?\s*["']?([^"';\s{}]+)["']?/gi)];
                 fallbackMatches.forEach(m => textures.push(m[1].split(/[\\/]/).pop()));
             }
 
-            // Remove nulls if we want, or keep them? buildSceneMesh handles nulls -> defaultTex
-            // Let's keep them, but filter purely empty ones maybe? 
-            // The consuming logic does `let tex = textures[i]`. If it is null, it falls back. That is good.
-
             console.log("Parsed Material Textures:", textures);
+            // Replace remaining nulls with undefined or filter them?
+            // buildSceneMesh checks !tex.
             return textures;
         }
 
