@@ -545,15 +545,8 @@
                 return fullPath.split(/[\\/]/).pop();
             });
 
-            // Special handling for human body AND hands: usually needs a skin texture
-            // The material file often only references the "face" or "hair", but not the body skin
-            // We should try to load 'skin_01.dds' (default yellow skin) if we are loading a body
-            const hasSkin = textures.some(t => t.toLowerCase().includes('skin') || t.toLowerCase().includes('face'));
-
-            if ((meshName.includes('body') || meshName.includes('hand')) && !hasSkin) {
-                console.log("Adding default skin texture: skin_01.dds");
-                textures.push('skin_01.dds');
-            }
+            // Removed automatic injection of skin_01.dds per user request.
+            // We rely strictly on the .txt file now.
 
             console.log("Found texture references:", textures);
             return textures;
@@ -562,8 +555,7 @@
         async function loadTexture(textureName, baseUrl) {
             let cleanName = textureName.split(/[\\/]/).pop();
 
-            // Normalize common skin names if needed
-            if (cleanName.toLowerCase() === 'face01.dds') cleanName = 'skin_01.dds';
+            // Removed normalization of face01 -> skin_01 per request (keep raw names)
 
             // 1. Local File
             let file = assetsMap.get(cleanName);
@@ -602,7 +594,7 @@
                     tex = await loader.loadAsync(url);
                 }
             } catch (e) {
-                console.warn(`Failed to load texture ${cleanName} from ${url}`, e);
+                console.warn("Failed to load texture:", cleanName);
                 return null;
             }
 
