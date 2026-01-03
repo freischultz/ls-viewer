@@ -304,6 +304,19 @@
         const assetsMap = new Map();
         let repoBaseUrl = ''; // Used if loading from URL
 
+        // Skin Colors Configuration
+        const SKIN_COLORS = [
+            { name: 'Yellow', color: [242, 209, 140] },
+            { name: 'Milky', color: [251, 242, 200] },
+            { name: 'Light Brown', color: [200, 162, 91] },
+            { name: 'Dark Brown', color: [95, 63, 29] },
+            { name: 'Pale', color: [132, 162, 197] },
+            { name: 'Green', color: [94, 124, 64] },
+            { name: 'Gray', color: [51, 54, 48] },
+            { name: 'Gangsi', color: [84, 217, 255] },
+            { name: 'C', color: [78, 100, 106] }
+        ];
+
         class MshParser {
             constructor(arrayBuffer) {
                 this.data = new DataView(arrayBuffer);
@@ -543,10 +556,10 @@
                 return fullPath.split(/[\\/]/).pop();
             });
 
-            // Special handling for human body: usually needs a skin texture
+            // Special handling for human body AND hands: usually needs a skin texture
             // The material file often only references the "face" or "hair", but not the body skin
             // We should try to load 'skin_01.dds' (default yellow skin) if we are loading a body
-            if (meshName.includes('human_body') && !textures.some(t => t.includes('skin'))) {
+            if ((meshName.includes('body') || meshName.includes('hand')) && !textures.some(t => t.includes('skin'))) {
                 console.log("Adding default skin texture: skin_01.dds");
                 textures.push('skin_01.dds');
             }
@@ -587,19 +600,23 @@
                 }
             }
 
+            let tex = null;
             // Check extension
             try {
                 if (cleanName.toLowerCase().endsWith('.dds')) {
                     const loader = new DDSLoader();
-                    return await loader.loadAsync(url);
+                    tex = await loader.loadAsync(url);
                 } else {
                     const loader = new THREE.TextureLoader();
-                    return await loader.loadAsync(url);
+                    tex = await loader.loadAsync(url);
                 }
             } catch (e) {
                 console.warn(`Failed to load texture ${cleanName} from ${url}`, e);
                 return null;
             }
+
+            if (tex) tex.name = cleanName;
+            return tex;
         }
 
         // --- Main Viewer Logic ---
@@ -656,21 +673,69 @@
 
         // --- File Handling & URL Loading ---
 
+        function clearScene() {
+            for (let i = scene.children.length - 1; i >= 0; i--) {
+                const child = scene.children[i];
+                if (child.type === 'Group' && child.name.endsWith('_model')) {
+                    scene.remove(child);
+                }
+            }
+        }
+
         // Check for URL Parameter ?model=path/to/model.msh
-        window.addEventListener('DOMContentLoaded', () => {
+        window.addEventListener('DOMContentLoaded', async () => {
+            // Init Skin Selector
+            const selector = document.getElementById('skin-select');
+            if (selector) { // Create if missing options
+                SKIN_COLORS.forEach((s, index) => {
+                    const opt = document.createElement('option');
+                    opt.value = index;
+                    opt.innerText = s.name;
+                    selector.appendChild(opt);
+                });
+
+                selector.addEventListener('change', (e) => {
+                    updateSkinColor(e.target.value);
+                });
+            }
+
             const params = new URLSearchParams(window.location.search);
             let modelPath = params.get('model');
 
+            clearScene(); // Clear scene before loading any models
+
             if (!modelPath) {
                 // Default model if none specified
-                modelPath = 'mesh/human_body.msh';
-            }
-
-            if (modelPath) {
-                console.log("Auto-loading model:", modelPath);
-                loadModelFromUrl(modelPath);
+                console.log("Auto-loading default models: basic_body_01_hw.msh and default_hand.msh");
+                await loadModelFromUrl('mesh/basic_body_01_hw.msh');
+                await loadModelFromUrl('mesh/default_hand.msh');
+            } else {
+                console.log("Auto-loading model from URL parameter:", modelPath);
+                await loadModelFromUrl(modelPath);
             }
         });
+
+        function updateSkinColor(index) {
+            const setting = SKIN_COLORS[index];
+            if (!setting) return;
+            const color = new THREE.Color(`rgb(${setting.color[0]}, ${setting.color[1]}, ${setting.color[2]})`);
+
+            scene.traverse(child => {
+                if (child.isMesh) {
+                    if (Array.isArray(child.material)) {
+                        child.material.forEach(mat => {
+                            if (mat.map && mat.map.name && mat.map.name.includes('skin')) {
+                                mat.color = color;
+                            }
+                        });
+                    } else {
+                        if (child.material.map && child.material.map.name && child.material.map.name.includes('skin')) {
+                            child.material.color = color;
+                        }
+                    }
+                }
+            });
+        }
 
         async function loadModelFromUrl(url) {
             document.getElementById('loader').style.display = 'flex';
@@ -687,7 +752,9 @@
                 const lastSlash = url.lastIndexOf('/');
                 if (lastSlash !== -1) base = url.substring(0, lastSlash + 1);
             }
-            repoBaseUrl = base;
+            // Only set repoBaseUrl if not already set or we want to overwrite?
+            // Ideally we set it once per session or per model load?
+            if (!repoBaseUrl) repoBaseUrl = base;
             console.log("Determined Base Repo URL:", repoBaseUrl);
 
             const name = url.split('/').pop().replace(/\.msh$/i, '');
@@ -733,17 +800,35 @@
         fileInput.setAttribute('multiple', '');
         fileInput.setAttribute('accept', '.msh,.txt,.dds,.png,.jpg,.tga');
 
-        fileInput.closest('.drop-zone').querySelector('.drop-zone-text').innerText = "Drop Files or use ?model=URL";
+        fileInput.closest('.drop-zone').querySelector('.drop-zone-text').innerText = "Drop Files";
 
-        // Asset List UI
         const sidebar = document.getElementById('sidebar');
+
+        // Skin Selector UI Panel
+        let skinPanel = document.getElementById('skin-panel');
+        if (!skinPanel) {
+            skinPanel = document.createElement('div');
+            skinPanel.id = 'skin-panel';
+            skinPanel.className = 'panel';
+            skinPanel.innerHTML = `
+                <div class="panel-header">Skin Color</div>
+                <select id="skin-select" style="width: 100%; padding: 6px; background: #333; color: white; border: 1px solid #444; border-radius: 4px; outline: none;">
+                </select>
+            `;
+            // Insert after file input area (which is not in sidebar but let's put it at top of panels)
+            // Sidebar contains: brand, asset-list (created below), stats, controls
+            // formatting: brand -> skin -> assets -> stats
+
+            sidebar.insertBefore(skinPanel, document.getElementById('stats'));
+        }
+
         let assetListDiv = document.getElementById('asset-list');
         if (!assetListDiv) {
             assetListDiv = document.createElement('div');
             assetListDiv.id = 'asset-list';
             assetListDiv.className = 'panel';
             assetListDiv.innerHTML = '<div class="panel-header">Found Meshes</div><div id="mesh-list-content" style="max-height: 300px; overflow-y: auto; font-size: 0.85rem;"></div>';
-            sidebar.insertBefore(assetListDiv, document.getElementById('stats'));
+            sidebar.insertBefore(assetListDiv, skinPanel ? skinPanel.nextElementSibling : document.getElementById('stats'));
         }
 
         fileInput.addEventListener('change', async (event) => {
@@ -771,6 +856,7 @@
 
             // Allow a small timeout for UI to update
             setTimeout(async () => {
+                clearScene(); // Additive clearing for drag drop: clear once at start
                 assetsMap.clear();
                 repoBaseUrl = ''; // Clear network mode
 
@@ -797,7 +883,12 @@
                     item.style.padding = '4px 8px';
                     item.style.borderBottom = '1px solid #333';
                     item.style.fontSize = '0.9rem';
-                    item.addEventListener('click', () => loadMeshFromFile(f));
+                    item.addEventListener('click', () => {
+                        // Click on list -> Single Item Load? Or Additive?
+                        // Usually clicking a list item implies "View This".
+                        clearScene();
+                        loadMeshFromFile(f);
+                    });
                     item.onmouseover = () => { item.style.backgroundColor = 'rgba(255,255,255,0.05)'; item.style.color = '#fff'; };
                     item.onmouseout = () => { item.style.backgroundColor = 'transparent'; item.style.color = '#ccc'; };
                     meshListContent.appendChild(item);
@@ -805,11 +896,13 @@
 
                 document.getElementById('loader').style.display = 'none';
 
-                if (mshFiles.length === 1) {
-                    // Auto load if only one mesh
-                    loadMeshFromFile(mshFiles[0]);
-                } else if (mshFiles.length === 0) {
-                    alert("No .msh files found in selection. Ensure you dropped the model file.");
+                // Load all MSH files dropped
+                if (mshFiles.length > 0) {
+                    for (const f of mshFiles) {
+                        await loadMeshFromFile(f);
+                    }
+                } else if (files.length > 0 && mshFiles.length === 0) {
+                    alert("No .msh files found.");
                 }
 
             }, 50);
@@ -856,13 +949,7 @@
         }
 
         function buildSceneMesh(data, name, textures) {
-            // Clear previous
-            for (let i = scene.children.length - 1; i >= 0; i--) {
-                const child = scene.children[i];
-                if (child.type === 'Group' && child.name.endsWith('_model')) {
-                    scene.remove(child);
-                }
-            }
+            // Clear previous - REMOVED CLEARING LOGIC here to allow additive
 
             const geometry = new THREE.BufferGeometry();
             geometry.setAttribute('position', new THREE.BufferAttribute(data.positions, 3));
@@ -912,33 +999,35 @@
                         // Fallback: if no texture at index i, cycle or use last?
                         if (!tex) tex = textures[textures.length - 1] || defaultTex;
 
-                        if (tex) {
-                            // Debug name
-                            // console.log(`Assigning texture to submesh ${i}:`, tex.source.data ? tex.source.data.src : 'unknown');
+                        const mat = new THREE.MeshStandardMaterial({
+                            map: tex,
+                            color: 0xffffff,
+                            side: THREE.DoubleSide,
+                            alphaTest: 0.5,
+                            transparent: true // Enable transparency
+                        });
 
-                            materials.push(new THREE.MeshStandardMaterial({
-                                map: tex,
-                                color: 0xffffff,
-                                side: THREE.DoubleSide,
-                                alphaTest: 0.5,
-                                transparent: true // Enable transparency
-                            }));
-                        } else {
-                            // Fallback debug color
-                            const color = new THREE.Color().setHSL(i / data.submeshes.length, 0.7, 0.5);
-                            materials.push(new THREE.MeshStandardMaterial({ color: color, side: THREE.DoubleSide }));
+                        // Default Skin Color Application (on Load)
+                        // If material uses a skin texture, apply default yellow
+                        if (tex && tex.name && tex.name.includes('skin')) {
+                            const defSkin = SKIN_COLORS[0]; // Yellow
+                            mat.color.setRGB(defSkin.color[0] / 255, defSkin.color[1] / 255, defSkin.color[2] / 255);
                         }
+
+                        materials.push(mat);
                     }
                 });
             } else {
                 // Fallback
                 console.warn("No submeshes detected, creating single group.");
                 geometry.addGroup(0, data.indices.length, 0);
-                if (defaultTex) {
-                    materials.push(new THREE.MeshStandardMaterial({ map: defaultTex, side: THREE.DoubleSide, alphaTest: 0.5 }));
-                } else {
-                    materials.push(new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+                // Same logic for single group
+                const mat = new THREE.MeshStandardMaterial({ map: defaultTex || null, side: THREE.DoubleSide, color: 0xffffff });
+                if (defaultTex && defaultTex.name && defaultTex.name.includes('skin')) {
+                    const defSkin = SKIN_COLORS[0]; // Yellow
+                    mat.color.setRGB(defSkin.color[0] / 255, defSkin.color[1] / 255, defSkin.color[2] / 255);
                 }
+                materials.push(mat);
             }
             console.groupEnd();
 
@@ -982,9 +1071,14 @@
                 camera.far = Math.max(2000, distance * 5);
                 camera.updateProjectionMatrix();
 
-                camera.position.set(center.x + distance, center.y + distance / 2, center.z + distance);
-                controls.target.copy(center);
-                controls.update();
+                // Don't override camera if user moved it?
+                // For now keep existing behavior: recenter on new load.
+                // Simple verify if we are near 0,0,0
+                if (camera.position.length() < 1 || (camera.position.x == 50 && camera.position.y == 50 && camera.position.z == 50)) {
+                    camera.position.set(center.x + distance, center.y + distance / 2, center.z + distance);
+                    controls.target.copy(center);
+                    controls.update();
+                }
             } else {
                 console.warn("Mesh size is invalid.");
             }
