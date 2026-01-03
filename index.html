@@ -624,9 +624,15 @@
         // Check for URL Parameter ?model=path/to/model.msh
         window.addEventListener('DOMContentLoaded', () => {
             const params = new URLSearchParams(window.location.search);
-            const modelPath = params.get('model');
+            let modelPath = params.get('model');
+
+            if (!modelPath) {
+                // Default model if none specified
+                modelPath = 'mesh/human_body_hw.msh';
+            }
+
             if (modelPath) {
-                console.log("Auto-loading model from URL:", modelPath);
+                console.log("Auto-loading model:", modelPath);
                 loadModelFromUrl(modelPath);
             }
         });
