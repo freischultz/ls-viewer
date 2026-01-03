@@ -549,23 +549,84 @@
 
             if (!text) text = "";
 
-            // Parse Text
-            // Regex to find texture references
-            // Supports: texture "foo.dds" | texture = "foo.dds" | texture="foo.dds"
-            const textureMatches = [...text.matchAll(/texture\s*=?\s*["']?([^"';\s]+)["']?/gi)];
-            let textures = textureMatches.map(m => {
-                const fullPath = m[1];
-                return fullPath.split(/[\\/]/).pop();
-            });
+            // --- Robust Material Block Parser ---
+            // The file may contain multiple "material { }" definitions, one for each submesh.
+            // We need to extract the primary texture for EACH material block separately.
+            const textures = [];
 
-            // Removed automatic injection of skin_01.dds per user request.
-            // We rely strictly on the .txt file now.
+            // Normalize content
+            const cleanText = text.replace(/\r\n/g, '\n');
+            let i = 0;
+            const len = cleanText.length;
 
-            console.log("Found texture references:", textures);
+            while (i < len) {
+                // Find "material" keyword
+                // Simple state check: are we at the start of the word "material"?
+                if (cleanText.substr(i, 8).toLowerCase() === 'material') {
+                    // Check boundaries (ensure it's a whole word or followed by whitespace/brace)
+                    const charAfter = cleanText[i + 8];
+                    if (!charAfter || /\s|\{/.test(charAfter)) {
+                        i += 8;
+                        let braceCount = 0;
+                        let insideBlock = false;
+                        let blockContent = '';
+
+                        // Consuming the block
+                        while (i < len) {
+                            const char = cleanText[i];
+
+                            if (char === '{') {
+                                if (!insideBlock) insideBlock = true;
+                                braceCount++;
+                            } else if (char === '}') {
+                                braceCount--;
+                            }
+
+                            if (insideBlock) {
+                                blockContent += char;
+                                if (braceCount === 0) {
+                                    // Block Finished
+                                    break;
+                                }
+                            }
+                            i++;
+                        }
+
+                        // Parse ONE texture from this block
+                        // We take the first "texture name.dds" occurrence as the Diffuse map
+                        const m = blockContent.match(/texture\s*=?\s*["']?([^"';\s]+)["']?/i);
+                        if (m) {
+                            textures.push(m[1].split(/[\\/]/).pop());
+                        } else {
+                            // Push null placeholder if material has no texture, to keep index alignment?
+                            // Or just skip? Usually bad to skip if mapping by index.
+                            // Let's push null to maintain 1-to-1 material-to-submesh mapping hope.
+                            textures.push(null);
+                        }
+                    } else {
+                        i++;
+                    }
+                } else {
+                    i++;
+                }
+            }
+
+            // Fallback: If strict parsing failed (e.g. weird formatting), fallback to simple regex
+            if (textures.length === 0) {
+                const fallbackMatches = [...text.matchAll(/texture\s*=?\s*["']?([^"';\s]+)["']?/gi)];
+                fallbackMatches.forEach(m => textures.push(m[1].split(/[\\/]/).pop()));
+            }
+
+            // Remove nulls if we want, or keep them? buildSceneMesh handles nulls -> defaultTex
+            // Let's keep them, but filter purely empty ones maybe? 
+            // The consuming logic does `let tex = textures[i]`. If it is null, it falls back. That is good.
+
+            console.log("Parsed Material Textures:", textures);
             return textures;
         }
 
         async function loadTexture(textureName, baseUrl) {
+            if (!textureName) return null; // Handle nulls from parser
             let cleanName = textureName.split(/[\\/]/).pop();
 
             // 1. Local File
