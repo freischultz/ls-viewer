@@ -300,22 +300,9 @@
 
         const MESH_VERSION_CONTROL_POINT = 2002;
 
-        // Global File Map & Base URL
+        // Global File Map
         const assetsMap = new Map();
-        let repoBaseUrl = ''; // Used if loading from URL
-
-        // Skin Colors Configuration
-        const SKIN_COLORS = [
-            { name: 'Yellow', color: [242, 209, 140] },
-            { name: 'Milky', color: [251, 242, 200] },
-            { name: 'Light Brown', color: [200, 162, 91] },
-            { name: 'Dark Brown', color: [95, 63, 29] },
-            { name: 'Pale', color: [132, 162, 197] },
-            { name: 'Green', color: [94, 124, 64] },
-            { name: 'Gray', color: [51, 54, 48] },
-            { name: 'Gangsi', color: [84, 217, 255] },
-            { name: 'C', color: [78, 100, 106] }
-        ];
+        let repoBaseUrl = ''; // Global fallback/override if needed, but we try to use per-model base
 
         class MshParser {
             constructor(arrayBuffer) {
@@ -471,7 +458,7 @@
         }
 
         // --- Simplified Material Parser ---
-        async function loadMaterial(meshName) {
+        async function loadMaterial(meshName, baseUrl) {
             // Helper to try finding a file key in assetsMap case-insensitively
             function findFile(name) {
                 const searchName = name.toLowerCase();
@@ -514,8 +501,8 @@
                     // First attempt: Try the exact mesh name (or the fallback name we decided on above)
                     // If we fell back locally but failed, matFileName is already baseName.txt
 
-                    if (repoBaseUrl) {
-                        url = `${repoBaseUrl}material/${matFileName}`;
+                    if (baseUrl) {
+                        url = `${baseUrl}material/${matFileName}`;
                     } else {
                         url = `material/${matFileName}`;
                     }
@@ -527,8 +514,8 @@
                     if (!response.ok && meshName.toLowerCase().endsWith('_hw') && !matFileName.endsWith(meshName.slice(0, -3) + '.txt')) {
                         const baseName = meshName.slice(0, -3);
                         console.log(`Material ${matFileName} 404, trying fallback URL for: ${baseName}.txt`);
-                        if (repoBaseUrl) {
-                            url = `${repoBaseUrl}material/${baseName}.txt`;
+                        if (baseUrl) {
+                            url = `${baseUrl}material/${baseName}.txt`;
                         } else {
                             url = `material/${baseName}.txt`;
                         }
@@ -539,13 +526,15 @@
                         text = await response.text();
                     } else {
                         console.warn(`Server 404 for material: ${url}`);
-                        return [];
+                        // Don't return empty yet, we might fallback to defaults
                     }
                 } catch (e) {
                     console.warn(`Could not fetch material for ${meshName}`, e);
-                    return [];
+                    // Don't return empty yet, we might fallback to defaults
                 }
             }
+
+            if (!text) text = "";
 
             // Parse Text
             // Regex to find texture references
@@ -559,7 +548,9 @@
             // Special handling for human body AND hands: usually needs a skin texture
             // The material file often only references the "face" or "hair", but not the body skin
             // We should try to load 'skin_01.dds' (default yellow skin) if we are loading a body
-            if ((meshName.includes('body') || meshName.includes('hand')) && !textures.some(t => t.includes('skin'))) {
+            const hasSkin = textures.some(t => t.toLowerCase().includes('skin') || t.toLowerCase().includes('face'));
+
+            if ((meshName.includes('body') || meshName.includes('hand')) && !hasSkin) {
                 console.log("Adding default skin texture: skin_01.dds");
                 textures.push('skin_01.dds');
             }
@@ -568,7 +559,7 @@
             return textures;
         }
 
-        async function loadTexture(textureName) {
+        async function loadTexture(textureName, baseUrl) {
             let cleanName = textureName.split(/[\\/]/).pop();
 
             // Normalize common skin names if needed
@@ -593,8 +584,8 @@
             } else {
                 // 2. Network Fetch
                 // Textures usually in "texture/" folder relative to root
-                if (repoBaseUrl) {
-                    url = `${repoBaseUrl}texture/${cleanName}`;
+                if (baseUrl) {
+                    url = `${baseUrl}texture/${cleanName}`;
                 } else {
                     url = `texture/${cleanName}`; // Try relative
                 }
@@ -707,8 +698,12 @@
             if (!modelPath) {
                 // Default model if none specified
                 console.log("Auto-loading default models: basic_body_01_hw.msh and default_hand.msh");
-                await loadModelFromUrl('mesh/basic_body_01_hw.msh');
-                await loadModelFromUrl('mesh/default_hand.msh');
+                try {
+                    await loadModelFromUrl('mesh/basic_body_01_hw.msh');
+                } catch (e) { console.error("Err body", e); }
+                try {
+                    await loadModelFromUrl('mesh/default_hand.msh');
+                } catch (e) { console.error("Err hand", e); }
             } else {
                 console.log("Auto-loading model from URL parameter:", modelPath);
                 await loadModelFromUrl(modelPath);
@@ -724,12 +719,12 @@
                 if (child.isMesh) {
                     if (Array.isArray(child.material)) {
                         child.material.forEach(mat => {
-                            if (mat.map && mat.map.name && mat.map.name.includes('skin')) {
+                            if (mat.map && mat.map.name && (mat.map.name.includes('skin') || mat.map.name.includes('face'))) {
                                 mat.color = color;
                             }
                         });
                     } else {
-                        if (child.material.map && child.material.map.name && child.material.map.name.includes('skin')) {
+                        if (child.material.map && child.material.map.name && (child.material.map.name.includes('skin') || child.material.map.name.includes('face'))) {
                             child.material.color = color;
                         }
                     }
@@ -745,17 +740,15 @@
             // Or if full url "https://site.com/data/mesh/foo.msh" -> "https://site.com/data/"
 
             // Find last occurrence of 'mesh/' or just use directory
-            let base = '';
+            let modelBaseUrl = '';
             if (url.includes('mesh/')) {
-                base = url.substring(0, url.indexOf('mesh/'));
+                modelBaseUrl = url.substring(0, url.indexOf('mesh/'));
             } else {
                 const lastSlash = url.lastIndexOf('/');
-                if (lastSlash !== -1) base = url.substring(0, lastSlash + 1);
+                if (lastSlash !== -1) modelBaseUrl = url.substring(0, lastSlash + 1);
             }
-            // Only set repoBaseUrl if not already set or we want to overwrite?
-            // Ideally we set it once per session or per model load?
-            if (!repoBaseUrl) repoBaseUrl = base;
-            console.log("Determined Base Repo URL:", repoBaseUrl);
+
+            console.log("Determined Base Repo URL:", modelBaseUrl);
 
             const name = url.split('/').pop().replace(/\.msh$/i, '');
 
@@ -768,12 +761,12 @@
                 const meshData = parser.parse();
 
                 // Load Material (Network)
-                const textureNames = await loadMaterial(name);
+                const textureNames = await loadMaterial(name, modelBaseUrl);
                 const loadedTextures = [];
 
                 if (textureNames && textureNames.length > 0) {
                     for (const tName of textureNames) {
-                        const tex = await loadTexture(tName);
+                        const tex = await loadTexture(tName, modelBaseUrl);
                         if (tex) {
                             tex.wrapS = THREE.RepeatWrapping;
                             tex.wrapT = THREE.RepeatWrapping;
@@ -786,7 +779,7 @@
 
             } catch (e) {
                 console.error(e);
-                alert("Failed to load model from URL: " + e.message);
+                // Don't alert here, just log, so other models can continue
             } finally {
                 document.getElementById('loader').style.display = 'none';
             }
@@ -918,7 +911,7 @@
                 const meshData = parser.parse();
 
                 // Get textures
-                const textureNames = await loadMaterial(name);
+                const textureNames = await loadMaterial(name, repoBaseUrl);
                 const loadedTextures = [];
 
                 // Load Default White Texture in case fail
@@ -927,7 +920,7 @@
                 if (textureNames && textureNames.length > 0) {
                     for (const tName of textureNames) {
                         try {
-                            const tex = await loadTexture(tName);
+                            const tex = await loadTexture(tName, repoBaseUrl);
                             if (tex) {
                                 tex.wrapS = THREE.RepeatWrapping;
                                 tex.wrapT = THREE.RepeatWrapping;
